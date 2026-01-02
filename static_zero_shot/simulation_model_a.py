@@ -6,13 +6,18 @@ import time
 from openai import OpenAI
 from dotenv import load_dotenv
 
+# ---------------------------------------------------------------------------
+# 경로 설정 (utils import 및 CSV 저장용)
+# ---------------------------------------------------------------------------
+# 현재 이 파일이 있는 경로 (/.../static_zero_shot)
 current_dir = os.path.dirname(os.path.abspath(__file__))
+# 상위 경로 (/.../khuda_pro) -> utils를 찾기 위해 필요
 parent_dir = os.path.dirname(current_dir)
 sys.path.append(parent_dir)
 
 from utils.persona_generator import generate_balanced_personas, Persona
 
-# 1. API키 로드(.env 파일 필요)
+# 1. API키 로드
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=api_key)
@@ -22,7 +27,6 @@ client = OpenAI(api_key=api_key)
 # =============================================================================
 
 def create_static_zeroshot_prompt(persona: Persona) -> tuple:
-    # Persona Description (English)
     persona_desc = f"""You are a {persona.age} year old {persona.gender} named '{persona.name}'.
 Occupation: {persona.occupation}
 [Gamer Type: {persona.gamer_type_name_display}]
@@ -79,8 +83,6 @@ def run_experiment_a_modular(n_agents: int = 100):
     print(f"Task 1: Static Zero-Shot (Modularized English Version)")
     print("=" * 70)
     
-    # 에이전트 생성
-    # 8개의 타입 * 13 에이전트 = 총 104개의 에이전트
     personas = generate_balanced_personas(n_per_type=13) 
     results = []
     
@@ -109,9 +111,8 @@ def run_experiment_a_modular(n_agents: int = 100):
         
     # 결과 저장
     df = pd.DataFrame(results)
-    
-    # 현재 디렉토리에 저장
-    output_path = "Team1_Static_ZeroShot_Results.csv"
+
+    output_path = os.path.join(current_dir, "Team1_Static_ZeroShot_Results.csv")
     df.to_csv(output_path, index=False, encoding="utf-8-sig")
     
     print("\n" + "=" * 70)
