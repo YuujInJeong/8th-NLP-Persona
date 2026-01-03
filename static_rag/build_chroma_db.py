@@ -5,12 +5,20 @@ from datetime import datetime
 import os
 import argparse
 import sys
+import torch
 
 # 설정 (Configuration)
 CSV_PATH = os.path.join("datasets", "reviews", "Cyberpunk_2077_Steam_Reviews.csv")
 DB_PATH = os.path.join("datasets", "chroma_db")
 COLLECTION_NAME = "cyberpunk2077_reviews"
-MODEL_NAME = "all-MiniLM-L6-v2"
+# Local Model Path (Relative to project root or absolute)
+# User specified: models/Qwen3-Embedding-8B inside the directory where script runs?
+# "Run execution... models subdir exists in that path... models/Qwen3-Embedding-8B"
+# Assuming running from project root, and models is in project root or static_rag/models?
+# User said: "This script's path has models subdirectory".
+# So `static_rag/models/Qwen3-Embedding-8B`.
+MODEL_PATH = os.path.join("static_rag", "models", "Qwen3-Embedding-8B")
+MODEL_NAME = "Qwen3-Embedding-8B" # For metadata or fallback
 
 def process_reviews(csv_path):
     """
@@ -64,12 +72,35 @@ def parse_date_to_int(date_str):
             
     return None
 
+class CustomEmbeddingFunction(embedding_functions.EmbeddingFunction):
+    def __init__(self, model_path):
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError:
+            raise ImportError("Please install sentence_transformers: pip install sentence-transformers")
+        
+        print(f"Loading embedding model from: {model_path}")
+        # trust_remote_code=True might be needed for some Qwen models
+        self.model = SentenceTransformer(model_path, trust_remote_code=True, device="cuda" if torch.cuda.is_available() else "cpu")
+
+    def __call__(self, input: list) -> list:
+        # Generate embeddings
+        embeddings = self.model.encode(input, convert_to_tensor=False).tolist()
+        return embeddings
+
 def build_chroma_db(test_mode=False):
     # ChromaDB 클라이언트 초기화
     client = chromadb.PersistentClient(path=DB_PATH)
     
-    # 임베딩 함수 설정
-    ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name=MODEL_NAME)
+    # 임베딩 함수 설정 (Local Qwen Model)
+    import torch # Ensure torch is imported for device check
+    
+    if os.path.exists(MODEL_PATH):
+        print(f"Found local model at {MODEL_PATH}, using CustomEmbeddingFunction.")
+        ef = CustomEmbeddingFunction(model_path=MODEL_PATH)
+    else:
+        print(f"Warning: Local model not found at {MODEL_PATH}. Falling back to default {MODEL_NAME}.")
+        ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
     
     # 스키마 초기화를 위해 항상 기존 컬렉션 삭제
     try:

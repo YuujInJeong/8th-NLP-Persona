@@ -15,12 +15,31 @@ from utils.persona_generator import generate_balanced_personas, Persona
 from utils.search_queries import GAMER_TYPE_QUERIES, GENERAL_QUERY
 from static_rag.rag_modules import RAGRetriever
 
-# 1. API키 및 환경 설정
+# 1. API키 및 환경 설정 (LLM Configuration)
 load_dotenv()
-api_key = os.getenv("OPENAI_API_KEY")
-if not api_key:
-    pass 
-client = OpenAI(api_key=api_key)
+
+# --- LLM 설정 (Configuration) ---
+USE_OLLAMA = True # Local LLM 사용 여부
+OLLAMA_BASE_URL = "http://localhost:11434/v1"
+OLLAMA_MODEL = "qwen3:4b"
+OPENAI_MODEL = "gpt-4o-mini"
+
+if USE_OLLAMA:
+    print(f"🔹 Using Local LLM (Ollama): {OLLAMA_MODEL}")
+    client = OpenAI(
+        base_url=OLLAMA_BASE_URL,
+        api_key="ollama" # Ollama는 api_key가 필요 없지만 클라이언트 호환성을 위해 더미 값 입력
+    )
+    MODEL_NAME = OLLAMA_MODEL
+else:
+    print(f"🔸 Using OpenAI API: {OPENAI_MODEL}")
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        print("Warning: OPENAI_API_KEY not found in .env")
+        pass 
+    client = OpenAI(api_key=api_key)
+    MODEL_NAME = OPENAI_MODEL
+# -------------------------------
 
 OUTPUT_FILE = "static_rag/Team2_StaticRAG_Results.csv"
 SIMULATION_DATES_FILE = "datasets/simulation_dates.csv"
@@ -63,7 +82,7 @@ JSON only:
 def call_llm(prompt: str) -> dict:
     try:
         res = client.chat.completions.create(
-            model="gpt-4o-mini", 
+            model=MODEL_NAME, 
             messages=[{"role": "system", "content": prompt}],
             response_format={"type": "json_object"},
             temperature=0.5
@@ -79,7 +98,7 @@ def call_llm(prompt: str) -> dict:
 
 def run_experiment_b_rag(n_per_type: int = 13):
     print("=" * 70)
-    print(f"Task 2: Static RAG Simulation (Team 2 - Aligned with Team 3)")
+    print(f"Task 2: Static RAG Simulation")
     print("=" * 70)
 
     # RAG 검색기 초기화
@@ -163,4 +182,4 @@ def run_experiment_b_rag(n_per_type: int = 13):
 
 if __name__ == "__main__":
     # 테스트 실행 (유형별 1명 생성)
-    run_experiment_b_rag(n_per_type=1)
+    run_experiment_b_rag(n_per_type=13)
