@@ -111,7 +111,7 @@ def run_experiment_a_modular(n_agents: int = 100):
     # 결과 저장
     df = pd.DataFrame(results)
 
-    output_path = os.path.join(current_dir, "Team1_Static_ZeroShot_Results_0105YG.csv")
+    output_path = os.path.join(current_dir, "Team1_Static_ZeroShot_Results.csv")
     df.to_csv(output_path, index=False, encoding="utf-8-sig")
     
     print("\n" + "=" * 70)
