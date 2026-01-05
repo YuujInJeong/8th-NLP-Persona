@@ -32,3 +32,8 @@ datasets/chroma_db_backup_*/
 models/
 
 .vscode/
+
+# Ignore CSV results in team folders
+static_rag/*.csv
+static_zero_shot/*.csv
+time_aware_rag/*.csv

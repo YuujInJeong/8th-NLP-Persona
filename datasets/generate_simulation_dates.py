@@ -42,7 +42,7 @@ def generate_simulation_dates():
     # 3. 안정기 (Monthly) - 2021.03 ~ 2023.12
     # ==========================================
     # 매월 1일 확인
-    monthly_dates = pd.date_range(start="2021-03-01", end="2024-08-01", freq="MS") # MS: Month Start
+    monthly_dates = pd.date_range(start="2021-03-01", end="2023-12-01", freq="MS") # MS: Month Start
     
     for dt in monthly_dates:
         date_str = dt.strftime("%Y-%m-%d")

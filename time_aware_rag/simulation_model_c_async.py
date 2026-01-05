@@ -166,7 +166,9 @@ async def run_experiment_c_rag_async(n_per_type: int = 13, max_concurrent: int =
                     def __init__(self, persona, queries):
                         self.search_queries = queries
                 persona_with_queries = PersonaWithQueries(persona, selected_queries)
-                final_docs = retriever.retrieve_reviews(
+                # Run blocking sync DB call in a separate thread to avoid blocking event loop
+                final_docs = await asyncio.to_thread(
+                    retriever.retrieve_reviews,
                     persona_with_queries,
                     current_date_str=date_str,
                     top_k_final=5,

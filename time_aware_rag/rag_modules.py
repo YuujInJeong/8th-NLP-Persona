@@ -80,7 +80,10 @@ class RAGRetriever:
             3. final_score 기준으로 정렬하여 상위 top_k_final개 선택
             4. 중복 제거 (동일 리뷰는 최고 점수만 유지)
         """
-        current_ts = int(pd.to_datetime(current_date_str).timestamp())
+        # 현재 날짜 처리
+        current_date_obj = pd.to_datetime(current_date_str)
+        current_ts = int(current_date_obj.timestamp())
+        current_date_int = int(current_date_obj.strftime('%Y%m%d'))
 
         # 쿼리 선정 (Team 2와 동일: 4개 랜덤 + GENERAL_QUERY)
         # 공정성 보장: Team 2와 동일한 쿼리 선택 전략 사용
@@ -93,9 +96,9 @@ class RAGRetriever:
         for query in selected_queries:
             results = self.collection.query(
                 query_texts=[query],
-                n_results=100,  # 넓은 풀에서 검색 (Team 2와의 차이점)
+                n_results=300,  # 넓은 풀에서 검색 (Team 2와의 차이점)
                 include=["documents", "metadatas", "distances"],
-                where={"timestamp": {"$lte": current_ts}}  # 현재 날짜 이전 리뷰만
+                where={"date": {"$lte": current_date_int}}  # 현재 날짜 이전 리뷰만 (date 필드 사용)
             )
 
             if results['documents'] and results['documents'][0]:
@@ -105,7 +108,16 @@ class RAGRetriever:
                     similarity = max(0, 1 - dist)
                     
                     # 시간 차이 계산 (일 단위)
-                    review_ts = meta['timestamp']
+                    # 메타데이터의 'date' (YYYYMMDD int)를 사용하여 시간 차이 계산
+                    review_date_int = meta.get('date')
+                    if review_date_int:
+                        review_date_str = str(review_date_int)
+                        review_date_obj = pd.to_datetime(review_date_str, format='%Y%m%d')
+                        review_ts = int(review_date_obj.timestamp())
+                    else:
+                        review_ts = current_ts # 날짜 없으면 차이 0으로 가정
+                        review_date_str = "Unknown"
+
                     days_diff = max(0, (current_ts - review_ts) / (60 * 60 * 24))
                     
                     # Time decay factor 계산 (핵심 차별점)
@@ -118,7 +130,7 @@ class RAGRetriever:
 
                     candidate_pool.append({
                         "review": doc,
-                        "date_str": meta.get('date_str', 'Unknown'),
+                        "date_str": review_date_str if review_date_int else 'Unknown',
                         "final_score": final_score,
                         "similarity": similarity,
                         "days_diff": int(days_diff)
@@ -154,7 +166,7 @@ if __name__ == "__main__":
                 self.search_queries = ["graphics", "bugs", "storyline"]
 
         agent = Agent()
-        test_date = "2023-12-31"
+        test_date = "2023-12-01"
         reviews = retriever.retrieve_reviews(agent, current_date_str=test_date, top_k_final=3)
         
         print(f"\n--- Testing Retrieval for date: {test_date} ---")
