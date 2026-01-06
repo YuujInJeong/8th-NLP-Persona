@@ -1,23 +1,16 @@
 # 🎮 Cyberpunk 2077 Purchase Intent Simulation (Multi-Agent RAG)
 
-이 프로젝트는 '사이버펑크 2077'의 출시 전후 여론 변화를 시뮬레이션하기 위해, **3가지 다른 방법론(Team 1, 2, 3)** 을 비교 분석합니다.
-모든 팀은 공통된 평가 스크립트와 **공통 페르소나 모듈**을 사용하여 실험의 일관성을 유지합니다.
+English summary (brief): Multi-agent simulation comparing three methods (Zero-Shot, Static RAG, Time-Aware RAG) on Cyberpunk 2077 purchase intent, using `gpt-4o-mini`, shared personas, and Steam reviews (EN, until 2023-12-13).
 
-## 🚀 빠른 시작 (Quick Start)
+한국어 요약: Cyberpunk 2077 구매 의향을 페르소나 기반 에이전트로 시뮬레이션하며, Zero-Shot / Static RAG / Time-Aware RAG 세 방법을 비교합니다. 모델은 `gpt-4o-mini`, 리뷰는 2023-12-13까지의 영어 리뷰를 사용합니다.
 
-```bash
-# 1. 환경 설정
-cp env_template.txt .env
-# .env 파일을 열어서 OPENAI_API_KEY 입력
+주요 다이어그램: `png/rag.png`
+이슈/결과 정리: `docs/results.md`
 
-# 2. 전체 실험 실행 (가상환경 자동 생성 및 패키지 설치 포함)
-chmod +x run_experiment.sh
-./run_experiment.sh
-```
-
-**실험 소요 시간:** 약 1-2시간 (API rate limit에 따라 달라질 수 있음)
-
-> **참고:** `run_experiment.sh`는 자동으로 가상환경(`.venv`)을 생성하고 필요한 패키지를 설치합니다.
+## 🚀 Quick Links
+- 결과/이슈 정리: `docs/results.md`
+- 데이터: Kaggle [Cyberpunk 2077 Steam Reviews](https://www.kaggle.com/datasets/kamilneumann/cyberpunk-2077-steam-reviews) (영문, 2020-12-13까지)
+- Ground Truth: `datasets/ground_truth_steam.csv`, `datasets/ground_truth_stock.csv`
 
 ---
 

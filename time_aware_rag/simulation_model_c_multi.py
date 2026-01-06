@@ -1,6 +1,15 @@
+#!/usr/bin/env python3
+"""
+Team 3: Time-Aware RAG Simulation (sharded, sync)
+- process_index / process_count 로 날짜를 분할 실행
+- 각 프로세스는 별도 OPENAI_API_KEY로 실행 가능
+- 결과는 지정한 output CSV에 chunk 단위로 append 저장
+"""
+
 import os
 import sys
 import json
+import argparse
 import pandas as pd
 import random
 from openai import OpenAI
@@ -12,25 +21,25 @@ sys.path.append(parent_dir)
 
 from utils.persona_generator import generate_balanced_personas, Persona
 from utils.search_queries import GAMER_TYPE_QUERIES, GENERAL_QUERY
-from utils.llm_config import get_llm_client, TEMPERATURE
+from utils.llm_config import TEMPERATURE
 from time_aware_rag.rag_modules import RAGRetriever
 
-# 1. LLM 클라이언트 초기화 (공통 모듈 사용)
-client, MODEL_NAME = get_llm_client()
-print(f"✅ Using model: {MODEL_NAME} (Team 3)")
+def get_llm_client_sync():
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY가 설정되지 않았습니다.")
+    client = OpenAI(api_key=api_key)
+    model_name = "gpt-4o-mini"
+    return client, model_name
 
-OUTPUT_FILE = "time_aware_rag/Team3_TimeAware_Results_Final.csv"
+client, MODEL_NAME = get_llm_client_sync()
+print(f"✅ Using model: {MODEL_NAME} (Team 3 - shard)")
+
 SIMULATION_DATES_FILE = "datasets/simulation_dates.csv"
-# 리뷰 데이터가 2023-12-13까지이므로 그 이후 날짜는 제외
 SIMULATION_DATE_CUTOFF = "2023-12-13"
-
-# =============================================================================
-# 2. 프롬프트 생성
-# =============================================================================
 
 def create_prompt(agent: Persona, current_date: str, context: list):
     context_str = "\n".join(context) if context else "(No reviews found.)"
-    
     return f"""[ROLE]
 You are a {agent.age} {agent.gender}.
 Personality: '{agent.gamer_type_name_display}' ({agent.description})
@@ -55,99 +64,73 @@ JSON only:
 }}
 """
 
-# =============================================================================
-# 3. API 호출
-# =============================================================================
-
 def call_llm(prompt: str) -> dict:
     try:
         res = client.chat.completions.create(
-            model=MODEL_NAME, 
+            model=MODEL_NAME,
             messages=[{"role": "system", "content": prompt}],
             response_format={"type": "json_object"},
-            temperature=TEMPERATURE
+            temperature=TEMPERATURE,
         )
         return json.loads(res.choices[0].message.content)
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"[LLM Error] {e}")
         return {"decision": "NO", "reasoning": "Error"}
 
-# =============================================================================
-# 4. 메인 실행 (Main Execution)
-# =============================================================================
-
-def run_experiment_b_rag(n_per_type: int = 13):
+def run_sharded(process_index: int, process_count: int, output_file: str, n_per_type: int = 13):
     print("=" * 70)
-    print(f"Task 3: Time Aware Rag Simulation")
+    print(f"Task 3: Time-Aware RAG Simulation (Shard {process_index}/{process_count})")
     print("=" * 70)
 
-    # RAG 검색기 초기화
-    print("Initializing RAG Retriever...")
     retriever = RAGRetriever()
 
-    # 날짜 로드 (+컷오프)
     dates_df = pd.read_csv(SIMULATION_DATES_FILE)
-    simulation_dates = [
+    all_dates = [
         d for d in dates_df['date'].tolist()
         if pd.to_datetime(d) <= pd.to_datetime(SIMULATION_DATE_CUTOFF)
     ]
-    
-    # 에이전트 생성
-    # README: "generate_balanced_personas(n_per_type=13)" (총 104명)
+    shard_dates = [d for i, d in enumerate(all_dates) if i % process_count == process_index]
+    print(f"Total dates: {len(all_dates)}, this shard: {len(shard_dates)} dates")
+
     personas = generate_balanced_personas(n_per_type=n_per_type) 
     print(f"Generated {len(personas)} agents.")
 
     results = []
-    
-    # 시뮬레이션 루프
-    total_steps = len(simulation_dates) * len(personas)
+    total_steps = len(shard_dates) * len(personas)
     step_count = 0
+    flush_every = 50
 
-    for date_str in simulation_dates:
+    for date_str in shard_dates:
         print(f"\n📅 Date: {date_str}")
         
         for persona in personas:
             step_count += 1
-            # 1. 쿼리 선정 (Team 3 방식: 4개 랜덤 + 일반 쿼리)
+            # 1. 쿼리 선정
             agent_queries = GAMER_TYPE_QUERIES.get(persona.gamer_type, [])
-            selected_queries = []
-            if len(agent_queries) >= 4:
-                selected_queries = random.sample(agent_queries, 4)
-            else:
-                selected_queries = agent_queries # Fallback
+            selected_queries = random.sample(agent_queries, min(4, len(agent_queries))) if len(agent_queries) >= 4 else agent_queries
             selected_queries.append(GENERAL_QUERY)
             
-            # 2. 검색 (Team 3 Time-Aware 로직)
-            # 쿼리당 100개를 검색 후 시간 감쇠(Time-Decay) 랭킹을 적용
-            # Team 2와의 차이: similarity × time_factor로 재랭킹
-            
-            # Persona 객체에 search_queries 속성 추가 (rag_modules.py 호환)
-            # 노트북의 ChromaEnsembleRetriever.retrieve_weighted() 로직과 동일
+            # 2. 검색 (Time-Aware)
             class PersonaWithQueries:
                 def __init__(self, persona, queries):
                     self.search_queries = queries
-            
             persona_with_queries = PersonaWithQueries(persona, selected_queries)
             
-            # Time-Aware RAG 검색 (similarity × time_factor)
-            # 노트북의 retrieve_weighted() 메서드와 동일한 로직
             final_docs = retriever.retrieve_reviews(
                 persona_with_queries,
                 current_date_str=date_str,
                 top_k_final=5,
-                decay_rate=0.01  # Half-life ≈ 70일
+                decay_rate=0.01
             )
             
-            # 3. 프롬프트 생성
+            # 3. 프롬프트
             prompt = create_prompt(persona, date_str, final_docs)
             
             # 4. LLM 호출
             print(f"[{step_count}/{total_steps}] {persona.gamer_type_name_display}...", end=" ", flush=True)
             res = call_llm(prompt)
-            
             decision = res.get("decision", "NO").upper()
             decision = "YES" if "YES" in decision else "NO"
-            
             print(f"-> {decision}")
             
             results.append({
@@ -159,21 +142,49 @@ def run_experiment_b_rag(n_per_type: int = 13):
                 "Reasoning": res.get("reasoning", "")
             })
 
-    # 결과 저장
-    df = pd.DataFrame(results)
-    df.to_csv(OUTPUT_FILE, index=False, encoding="utf-8-sig")
-    
-    # 최종 통계 출력
-    decision_counts = df['Decision'].value_counts(normalize=True)
-    
+            if len(results) >= flush_every:
+                header = not os.path.exists(output_file) or os.path.getsize(output_file) == 0
+                pd.DataFrame(results).to_csv(
+                    output_file,
+                    mode="a",
+                    index=False,
+                    header=header,
+                    encoding="utf-8-sig"
+                )
+                print(f"💾 Saved chunk: total rows appended ~{len(results)}", flush=True)
+                results = []
+
+    # 남은 결과 저장
+    if results:
+        header = not os.path.exists(output_file) or os.path.getsize(output_file) == 0
+        pd.DataFrame(results).to_csv(
+            output_file,
+            mode="a",
+            index=False,
+            header=header,
+            encoding="utf-8-sig"
+        )
+        print(f"💾 Saved final chunk: rows {len(results)}", flush=True)
+
     print("\n" + "=" * 70)
-    print("Decision")
-    print(f"NO     {decision_counts.get('NO', 0):.3f}")
-    print(f"YES    {decision_counts.get('YES', 0):.3f}")
-    print("=" * 70)
-    print(f"Simulation completed. Results saved to {OUTPUT_FILE}")
+    print(f"Simulation completed. Results saved to {output_file}")
     print("=" * 70)
 
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--process-index", type=int, default=0, help="0-based shard index")
+    parser.add_argument("--process-count", type=int, default=1, help="total shards")
+    parser.add_argument("--output", type=str, default="time_aware_rag/Team3_TimeAware_Results_shard.csv")
+    args = parser.parse_args()
+
+    run_sharded(
+        process_index=args.process_index,
+        process_count=args.process_count,
+        output_file=args.output,
+    )
+
+
 if __name__ == "__main__":
-    # 테스트 실행 (유형별 1명 생성)
-    run_experiment_b_rag(n_per_type=13)
+    main()
+
